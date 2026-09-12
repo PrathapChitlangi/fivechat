@@ -1,2 +1,0 @@
-self.addEventListener("push",event=>{let d={title:"FiveChat",body:"New message",roomName:""};try{if(event.data)d=event.data.json()}catch(e){}event.waitUntil(self.registration.showNotification(d.title||"FiveChat",{body:d.body||"New message",tag:"fivechat-"+(d.roomName||"message"),data:{roomName:d.roomName||""}}))});
-self.addEventListener("notificationclick",event=>{event.notification.close();event.waitUntil(clients.matchAll({type:"window",includeUncontrolled:true}).then(list=>{if(list.length)return list[0].focus();return clients.openWindow("/")}))});
