@@ -1,7 +1,1 @@
-# FiveChat v11
-
-Single shared chat space. Login requires only:
-- Name
-- Chat access code: `112233`
-
-There is no Room ID or room password. Private one-to-one conversations are preserved by MongoDB when `MONGODB_URI` is configured; browser refresh/relogin restores the session locally.
+FiveChat v32 — responsive private messenger with persistent accounts/messages, live presence, direct and group chats, admin group member management, multi-user typing indicators, attachments, edit/unsend, responsive composer, and mobile slide-out People panel. Set MONGODB_URI for persistent database storage.

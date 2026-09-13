@@ -136,3 +136,72 @@ button:focus{outline:none}
   .messageField textarea{height:45px;padding:13px 0}
   .sendButton{width:46px;height:46px;flex-basis:46px}
 }
+
+/* v32 visual rebuild */
+.peopleBrand{flex-wrap:nowrap;gap:10px;min-height:40px}
+.peopleBrand .brandMark{width:38px;height:38px;border-radius:12px;font-size:18px;flex:0 0 38px}
+.peopleBrand>span:nth-child(2){font-size:20px;line-height:1}
+.peopleBrand h2{display:none!important}
+.sidebarHead{margin:0 5px 22px;min-height:40px}
+.sidebar{padding-top:22px}
+.searchBox{height:52px;border-radius:17px;margin:0 2px}
+.searchBox input{font-size:13px}
+.listHeader{margin:25px 8px 13px;font-size:9px}
+.groupTitle{margin:25px 8px 10px;font-size:9px}
+.chatList{padding:0 1px}
+.person{min-height:62px;padding:9px 9px;border-radius:16px}
+.person .avatar{width:44px;height:44px;border-radius:14px;background:linear-gradient(135deg,hsl(var(--avatarHue,220) 72% 48%),hsl(calc(var(--avatarHue,220) + 45) 72% 55%))}
+.person.selected{box-shadow:inset 3px 0 var(--blue)!important}
+.person.selected:after{inset:3px 0 3px 0;border-color:#438fff30}
+.personText b{font-size:13px}.personText small{font-size:9px;margin-top:5px}
+.createGroupBtn{font-size:10px;padding:5px 0}
+
+/* Floating group options are attached to the viewport, so they can never be clipped by a list. */
+.floatingGroupMenu{position:fixed!important;min-width:155px!important;z-index:200!important}
+
+/* Group information popover */
+.groupInfoPanel{position:absolute;z-index:70;top:74px;left:18px;width:min(390px,calc(100% - 36px));max-height:min(72vh,560px);overflow:auto;padding:16px;border:1px solid #294a6c;border-radius:20px;background:linear-gradient(145deg,#10253df7,#091728f8);box-shadow:0 25px 70px #000b,0 0 0 1px #438fff10;backdrop-filter:blur(22px);animation:groupInfoIn .2s ease}
+.groupInfoPanel::-webkit-scrollbar{width:0;height:0}
+.infoHeader{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding-bottom:12px;border-bottom:1px solid #ffffff0d}
+.infoHeader h3{margin:3px 0 4px;font-size:18px}.infoHeader small{color:#7289a4;font-size:9px}.infoClose{width:28px;height:28px;border:0;background:#ffffff06;color:#9bb8d8;border-radius:50%;font-size:21px;line-height:1;transition:.2s}.infoClose:hover{transform:rotate(90deg);background:#ffffff10;color:#fff}
+.infoMembers{display:flex;flex-direction:column;gap:6px;padding:12px 0}.infoMember{display:flex;align-items:center;gap:9px;padding:8px;border-radius:13px;background:#ffffff03;border:1px solid #ffffff07}.miniAvatar{width:34px;height:34px;border-radius:11px!important;background:linear-gradient(135deg,hsl(var(--avatarHue,220) 72% 48%),hsl(calc(var(--avatarHue,220) + 45) 72% 55%))!important}.infoMemberText{min-width:0;flex:1}.infoMemberText b{font-size:11px}.infoMemberText b em{font-style:normal;font-size:7px;margin-left:5px;padding:3px 5px;border-radius:99px;background:#2f7df61a;color:#78b3ff}.infoMemberText small{display:block;font-size:8px;margin-top:3px}.onlineText{color:#51dfa0}.offlineText{color:#687f9a}.removeMember{width:27px;height:27px;border:0;border-radius:50%;background:#ff617b10;color:#ff8195;font-size:18px;transition:.18s}.removeMember:hover{background:#ff617b25;transform:scale(1.08)}
+.addMemberBtn{width:100%;height:40px;border:1px solid #2f7df644;border-radius:12px;background:#2f7df610;color:#84b8ff;font-size:10px;font-weight:900;transition:.2s}.addMemberBtn:hover{background:#2f7df61c;transform:translateY(-1px)}
+.memberNote{padding:9px;border-radius:10px;background:#ffffff04;color:#7188a3;font-size:8px;text-align:center}
+
+/* Group creation / add-members selection cards */
+.memberChoice{display:flex!important;align-items:center;gap:9px;padding:9px!important;margin:5px 0;border:1px solid #ffffff08;border-radius:14px;background:#091829;cursor:pointer;transition:.2s}.memberChoice:hover{border-color:#2f7df644;transform:translateY(-1px);background:#0d2138}.memberChoice input{position:absolute;opacity:0;pointer-events:none}.choiceAvatar{width:38px;height:38px;flex:0 0 38px;display:grid;place-items:center;border-radius:12px;background:linear-gradient(135deg,hsl(var(--choiceHue) 72% 48%),hsl(calc(var(--choiceHue) + 45) 72% 55%));font-size:12px;font-weight:900;color:#fff}.choiceText{min-width:0;flex:1}.choiceText b{display:block;font-size:11px}.choiceText small{display:block;color:#6e849f;font-size:8px;margin-top:3px}.choiceCheck{width:23px;height:23px;display:grid;place-items:center;border:1px solid #35506e;border-radius:50%;color:transparent;font-size:11px;font-weight:900;transition:.2s}.memberChoice:has(input:checked){border-color:#438fff88;background:linear-gradient(135deg,#102b4c,#111c48);box-shadow:0 8px 25px #2f7df618}.memberChoice:has(input:checked) .choiceCheck{background:#3f86ff;border-color:#5fa0ff;color:#fff;transform:scale(1.05)}
+.memberModalCard{max-height:86vh}.addMembersList{max-height:38vh;overflow:auto;padding-right:2px}.addMembersList::-webkit-scrollbar{width:0;height:0}.noPeopleToAdd{padding:18px;text-align:center;color:#7086a1;font-size:10px;border:1px dashed #2a4563;border-radius:12px}
+
+/* Group typing: separate person pills, never a merged sentence. */
+.typing{height:34px;padding:4px clamp(14px,3vw,30px);display:flex;align-items:center;gap:6px;overflow:hidden}.typingPerson{display:inline-flex;align-items:center;gap:4px;padding:5px 9px;border:1px solid #2f7df630;border-radius:99px;background:#0c2137e8;color:#7e9abc;font-size:8px;white-space:nowrap;animation:typingIn .18s ease}.typingPerson b{color:#9bc5ff}.typingDots{margin-right:1px}.typingDots i{width:4px;height:4px}
+
+/* Sender-only color treatment */
+.groupMsg.theirs .bubble{background:linear-gradient(135deg,hsl(var(--senderHue) 55% 22% / .9),hsl(calc(var(--senderHue) + 25) 50% 16% / .92));border-color:hsl(var(--senderHue) 75% 62% / .36);box-shadow:0 8px 22px #0004,0 0 20px hsl(var(--senderHue) 70% 50% / .08)}
+.groupMsg.mine .bubble{background:linear-gradient(135deg,#256ed0,#4c59e9)!important;border-color:#ffffff14!important}
+
+/* Telegram / WhatsApp inspired composer */
+.composer{padding:11px clamp(12px,3vw,30px) calc(11px + env(safe-area-inset-bottom));transition:padding .2s}
+.composerRow{width:min(100%,1120px);gap:10px;align-items:center}
+.attachBtn{width:54px;height:54px;flex:0 0 54px;border-radius:18px;border:1px solid #315173;background:linear-gradient(145deg,#0d2238,#091728);font-size:31px;color:#82b8ff;display:grid;place-items:center;box-shadow:0 9px 25px #0004;transition:transform .2s,background .2s,border-color .2s}.attachBtn:hover:not(:disabled){transform:rotate(90deg) scale(1.03);background:#102d4b;border-color:#438fff}.attachBtn:active:not(:disabled){transform:scale(.92)}
+.messageField{height:54px;min-height:54px;max-height:112px;align-items:center;border-radius:28px;padding:0 10px 0 18px;background:linear-gradient(145deg,#0a1a2c,#081627);border:1px solid #2e4968;box-shadow:inset 0 1px #ffffff0a,0 10px 28px #0004;transition:border-color .2s,box-shadow .2s,height .15s}.messageField:focus-within{border-color:#4a91ff;box-shadow:0 0 0 3px #2f7df610,0 12px 32px #0005}
+.messageField textarea{width:100%;height:100%;min-height:52px;max-height:110px;align-self:stretch;display:block;resize:none;overflow-y:hidden;padding:0!important;margin:0;border:0;outline:0;background:transparent;color:#f3f7ff;font-size:15px;line-height:1.35;box-shadow:none;scroll-padding:0}.messageField textarea::placeholder{color:#667e9b;opacity:1}
+.emojiBtn{width:34px;height:34px;flex:0 0 34px;font-size:23px;color:#91a8c4}.emojiBtn:hover:not(:disabled){background:#ffffff08}
+.sendButton{width:56px;height:56px;flex:0 0 56px;border-radius:50%;border:0;display:grid;place-items:center;background:linear-gradient(145deg,#3b8fff,#4f58ef);box-shadow:0 12px 30px #2f7df655,0 0 0 1px #ffffff10;transition:transform .2s,box-shadow .2s}.sendButton:hover:not(:disabled){transform:translateY(-2px) scale(1.04);box-shadow:0 16px 38px #2f7df677}.sendButton:active:not(:disabled){transform:scale(.9)}
+.paperRocket{width:28px;height:24px;position:relative;display:block;transform:translateX(1px) rotate(-4deg);filter:drop-shadow(0 2px 2px #0003);transition:.2s}.paperRocket:before{content:"";position:absolute;inset:0;background:#fff;clip-path:polygon(0 0,100% 42%,58% 100%,47% 60%,0 76%,30% 49%)}.paperRocket:after{content:"";position:absolute;left:6px;top:11px;width:13px;height:2px;background:#4d78dd;transform:rotate(-8deg);transform-origin:left center}.sendButton:hover .paperRocket{transform:translate(2px,-2px) rotate(0)}
+
+/* Auth fields never get a browser white autofill surface. */
+.inputWrap input,.inputWrap input:focus{background:transparent!important}.inputWrap input:-webkit-autofill,.inputWrap input:-webkit-autofill:hover,.inputWrap input:-webkit-autofill:focus{background-color:transparent!important;-webkit-box-shadow:0 0 0 1000px #071323 inset!important;box-shadow:0 0 0 1000px #071323 inset!important;-webkit-text-fill-color:#fff!important}
+.field label{white-space:nowrap;line-height:1.2}
+
+/* Mobile menu closes when tapping outside; the panel remains scrollable. */
+@media(max-width:760px){
+  .topbar{height:64px;padding:0 14px;gap:12px}.mobileMenu{width:42px;height:42px;border-radius:14px;flex:0 0 42px}.brand.compact{gap:8px;font-size:19px}.brand.compact .brandMark{width:34px;height:34px}.meProfile .me{padding:0}.meInfo{display:none}
+  .sidebar{top:0;bottom:0;width:min(88vw,350px);padding:22px 14px 12px;box-shadow:28px 0 80px #000b}.sidebarHead{margin-bottom:20px}.peopleBrand .brandMark{width:36px;height:36px;flex-basis:36px}.peopleBrand>span:nth-child(2){font-size:19px}.mobileClose{top:18px;right:14px;width:31px;height:31px;border:0;border-radius:50%;background:transparent;color:#84b9ff;font-size:25px;transition:.2s}.mobileClose:hover{transform:rotate(90deg);background:transparent}
+  .searchBox{height:50px;margin:0;border-radius:16px}.listHeader{margin-top:23px}.groupTitle{margin-top:23px}.chatHead{height:64px;padding:0 14px;gap:10px}.chatAvatar{width:44px;height:44px}.chatIdentity{max-width:54%}.chatIdentity h2{font-size:14px}.chatCloseBtn{width:28px;height:28px;font-size:25px}.groupInfoPanel{top:72px;left:10px;width:calc(100% - 20px);max-height:68vh}
+  .messages{padding:16px 10px}.typing{height:38px;padding:4px 11px;justify-content:flex-start}.typingPerson{font-size:8px}.composer{padding:9px 10px calc(9px + env(safe-area-inset-bottom))}.composerRow{gap:8px}.attachBtn{width:52px;height:52px;flex-basis:52px;border-radius:17px}.messageField{height:52px;min-height:52px;border-radius:27px;padding-left:17px;padding-right:8px}.messageField textarea{min-height:50px;height:50px;font-size:14px}.emojiBtn{width:31px;height:31px;flex-basis:31px;font-size:21px}.sendButton{width:54px;height:54px;flex-basis:54px}.paperRocket{width:27px;height:23px}.attachmentPreview{margin-top:6px}.menuOpen .chatArea{filter:brightness(.7);transition:filter .2s}.chatArea{transition:filter .2s}
+}
+@media(max-width:430px){
+  .composerRow{gap:7px}.attachBtn{width:48px;height:48px;flex-basis:48px;border-radius:16px;font-size:28px}.messageField{height:48px;min-height:48px;border-radius:25px;padding-left:15px}.messageField textarea{height:46px;min-height:46px;font-size:13px}.emojiBtn{width:29px;height:29px;flex-basis:29px;font-size:20px}.sendButton{width:50px;height:50px;flex-basis:50px}.paperRocket{width:25px;height:21px}.typing{height:36px}.groupInfoPanel{top:70px}
+}
+@keyframes groupInfoIn{from{opacity:0;transform:translateY(-7px) scale(.98)}to{opacity:1;transform:none}}
+@keyframes typingIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
