@@ -1,1 +1,0 @@
-FiveChat v32 — responsive private messenger with persistent accounts/messages, live presence, direct and group chats, admin group member management, multi-user typing indicators, attachments, edit/unsend, responsive composer, and mobile slide-out People panel. Set MONGODB_URI for persistent database storage.
