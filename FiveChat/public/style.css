@@ -9,3 +9,24 @@
 @media(max-width:390px){.attachBtn{width:41px;height:41px;flex-basis:41px}.messageField{min-height:41px}.messageField textarea{height:41px}.sendButton{width:43px;height:43px;flex-basis:43px}.paperRocket{transform:scale(.9) rotate(-8deg)}}
 @media(min-width:761px){.sidebar{transform:none!important}.mobileClose{display:none}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition:none!important;scroll-behavior:auto!important}}
+/* v26 interaction and layout polish */
+button,a,.person,input,textarea{-webkit-tap-highlight-color:transparent}
+.person:active,.person:focus,.person:focus-visible,.person.selected:hover{background:transparent}
+.person.selected{background:transparent!important}
+.chatHead.homeHidden{display:none}
+.messageTicks{display:inline-block;margin-left:5px;font-size:10px;letter-spacing:-2px;color:#8da1b8;font-weight:900;vertical-align:middle}
+.messageTicks.seen{color:#69a9ff}
+.groupMoreMenu .dangerOption{color:#ff8396}
+.groupMoreMenu .dangerOption:hover{background:#4a1d2b;color:#fff}
+@media(max-width:760px){
+  .sidebar{padding:14px 12px 12px}
+  .sidebarHead{margin:0 3px 10px;min-height:42px}
+  .sidebarHead h2{margin:1px 0 0;font-size:25px}
+  .mobileClose{top:14px;right:12px}
+  .searchBox{height:44px}
+  .listHeader{margin-top:12px}
+  .groupTitle{margin-top:11px}
+  .person:hover{transform:none;background:transparent}
+  .person.selected:after{inset:2px 0 2px 0}
+  .chatHead.homeHidden{display:none}
+}
