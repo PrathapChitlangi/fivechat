@@ -51,3 +51,88 @@ button,a,.person,input,textarea{-webkit-tap-highlight-color:transparent}
 .composerRow{align-items:flex-end}.attachBtn,.sendButton{align-self:flex-end}.messageField{align-self:flex-end}
 @media(max-width:760px){.profileMenu{right:-4px;top:calc(100% + 8px);width:205px}.groupMembersBar{position:absolute;left:62px;right:48px;bottom:4px;max-width:none;margin:0}.chatHead{position:relative;padding-bottom:20px}.chatIdentity{max-width:44%}.sendButton{width:48px;height:48px;flex-basis:48px}.paperRocket{width:23px;height:20px}}
 @media(max-width:390px){.sendButton{width:44px;height:44px;flex-basis:44px}.paperRocket{width:21px;height:18px}.attachBtn{width:41px;height:41px;flex-basis:41px}}
+
+/* v31 responsive visual refinement */
+html,body,button,input,textarea,.person{ -webkit-tap-highlight-color: transparent; }
+button:focus{outline:none}
+.sidebarHead{margin:0 4px 18px;min-height:48px}
+.peopleBrand{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.peopleBrand .brandMark{width:31px;height:31px;border-radius:10px;font-size:15px}
+.peopleBrand>span:nth-child(2){font-size:18px;font-weight:950;letter-spacing:-.03em}
+.peopleBrand h2{flex-basis:100%;margin:-1px 0 0 40px;font-size:25px;line-height:1;letter-spacing:-.05em}
+.sidebar{padding-top:18px}
+.searchBox{height:48px;border-radius:15px}
+.listHeader{margin-top:22px;margin-bottom:10px}
+.groupTitle{margin-top:20px;margin-bottom:9px}
+.person{outline:none!important;box-shadow:none}
+.person:hover,.person:active,.person:focus,.person:focus-visible,.person.selected,.person.selected:hover{background:transparent!important}
+.person.selected{box-shadow:inset 3px 0 var(--blue)!important}
+.person.selected:after{background:transparent!important}
+
+/* Group information is a floating popover, never a layout row/scroll container. */
+.chatArea{overflow:hidden}
+.chatAvatar{border:0;padding:0;cursor:default;box-shadow:none;transition:transform .2s,filter .2s}
+.chatAvatar:not(:disabled){cursor:pointer}
+.chatAvatar:not(:disabled):hover{transform:scale(1.05);filter:brightness(1.08)}
+.groupMembersBar{position:absolute;z-index:35;top:76px;left:20px;max-width:min(430px,calc(100% - 40px));display:flex;flex-wrap:wrap;gap:7px;padding:12px;border:1px solid #294a6c;border-radius:16px;background:linear-gradient(145deg,#0e2238f5,#091728f5);box-shadow:0 22px 55px #000b;backdrop-filter:blur(18px);animation:groupPop .2s ease}
+.groupMembersTitle{width:100%;font-size:9px;font-weight:900;color:#9ab0ca;letter-spacing:.04em;margin-bottom:1px}
+.groupMemberChip{padding:5px 8px 5px 5px;font-size:9px;box-shadow:0 5px 14px hsl(var(--memberHue) 70% 45% / .08)}
+.groupMemberChip i{width:22px;height:22px;font-size:9px}
+
+/* Only the sender gets the message color. Group senders get stable per-user accents. */
+.groupMsg.theirs .sender{color:hsl(var(--senderHue) 82% 72%)}
+.groupMsg.theirs .bubble{border-color:hsl(var(--senderHue) 70% 62% / .30);box-shadow:0 7px 20px #0003,0 0 0 1px hsl(var(--senderHue) 70% 55% / .035)}
+.groupMsg.mine .bubble{border-color:#ffffff18}
+
+/* Small animated X instead of a heavy button. */
+.chatCloseBtn{width:28px;height:28px;padding:0;border:0!important;border-radius:50%;background:transparent!important;color:#84b9ff;font-size:25px;font-weight:500;line-height:1;box-shadow:none!important;transition:transform .2s,opacity .2s,color .2s}
+.chatCloseBtn:hover{transform:rotate(90deg) scale(1.12)!important;color:#fff;background:transparent!important}
+.chatCloseBtn:active{transform:rotate(90deg) scale(.86)!important}
+
+/* WhatsApp-like composer proportions and transition. */
+.composer{padding-top:11px}
+.composerRow{width:min(100%,1080px);gap:10px;align-items:center}
+.attachBtn{width:52px;height:52px;flex-basis:52px;border-radius:17px;font-size:29px}
+.messageField{min-height:54px;height:54px;align-items:center;border-radius:28px;padding:0 13px 0 18px}
+.messageField textarea{height:52px;max-height:120px;padding:15px 0;font-size:14px;line-height:1.4;overflow-y:auto}
+.emojiBtn{width:30px;height:30px;flex:0 0 30px;border:0;background:transparent;color:#88a2c1;font-size:22px;display:grid;place-items:center;border-radius:50%;transition:.2s}
+.emojiBtn:hover:not(:disabled){color:#c9ddf7;background:#ffffff08;transform:scale(1.08) rotate(8deg)}
+.emojiBtn:disabled{opacity:.3;cursor:not-allowed}
+.sendButton{width:54px;height:54px;flex-basis:54px}
+.sendButton:not(:disabled){animation:sendReady .35s ease}
+.paperRocket{width:26px;height:22px}
+
+@keyframes groupPop{from{opacity:0;transform:translateY(-5px) scale(.97)}to{opacity:1;transform:none}}
+@keyframes sendReady{from{transform:scale(.9)}to{transform:scale(1)}}
+
+@media(max-width:760px){
+  .topbar{height:64px;padding:0 16px;gap:9px}
+  .brand.compact{font-size:18px}
+  .brand.compact .brandMark{width:31px;height:31px}
+  .sidebar{padding:15px 14px 12px;width:min(90vw,350px)}
+  .sidebarHead{margin-bottom:17px}
+  .peopleBrand h2{font-size:24px;margin-left:40px}
+  .searchBox{height:50px}
+  .listHeader{margin-top:19px}
+  .groupTitle{margin-top:18px}
+  .groupMembersBar{top:68px;left:10px;right:10px;max-width:none}
+  .chatHead{height:62px;padding:0 13px}
+  .chatIdentity{max-width:55%}
+  .chatCloseBtn{width:27px;height:27px;font-size:24px}
+  .messages{padding:16px 12px}
+  .composer{padding:8px 10px calc(8px + env(safe-area-inset-bottom))}
+  .composerRow{gap:7px}
+  .attachBtn{width:48px;height:48px;flex-basis:48px;border-radius:16px}
+  .messageField{height:50px;min-height:50px;padding-left:16px;padding-right:9px}
+  .messageField textarea{height:48px;padding:14px 0;font-size:13px}
+  .emojiBtn{width:28px;height:28px;flex-basis:28px;font-size:20px}
+  .sendButton{width:50px;height:50px;flex-basis:50px}
+  .paperRocket{width:24px;height:20px}
+}
+@media(max-width:390px){
+  .topbar{padding:0 12px}
+  .attachBtn{width:45px;height:45px;flex-basis:45px}
+  .messageField{height:47px;min-height:47px;padding-left:14px}
+  .messageField textarea{height:45px;padding:13px 0}
+  .sendButton{width:46px;height:46px;flex-basis:46px}
+}
