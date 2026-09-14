@@ -2,7 +2,7 @@ const s = io();
 const $ = id => document.getElementById(id);
 let me = null, people = [], groups = [], selected = {type:null,id:null,name:null};
 let authMode = 'login', typingTimer = null, pendingFiles = [], editingId = null, logoutInProgress = false, authRequestId = 0, longPressTimer = null;
-const unread = JSON.parse(localStorage.getItem('fivechat_unread') || '{}');
+const unread = Object.create(null);
 const SESSION = 'fivechat_v24_session';
 const ACTIVITY_KEY='fivechat_last_activity';
 const INACTIVITY_LIMIT=30*60*1000;
@@ -19,9 +19,8 @@ function refreshPushActivity(){if(pushSubscription&&me&&s.connected)sendPushActi
 window.addEventListener('visibilitychange',refreshPushActivity);window.addEventListener('pageshow',refreshPushActivity);window.addEventListener('focus',refreshPushActivity);
 async function updateNotificationSetting(){if(!('Notification' in window)||!('serviceWorker' in navigator)||!('PushManager' in window)){showToast('Browser notifications are not supported here');return}const next=!notificationEnabled;notificationEnabled=next;localStorage.setItem(PUSH_PREF_KEY,String(next));updateNotificationLabel(next,next);if(s.connected&&pushSubscription)s.emit('pushPreference',{endpoint:pushSubscription.endpoint,enabled:next});if(!next){updateNotificationLabel(false,false);showToast('Notifications off');return}if(pushSubscription){updateNotificationLabel(true,false);showToast('Notifications on');return}const ok=await setupPushNotifications();if(ok){updateNotificationLabel(true,false);showToast('Notifications on')}else{notificationEnabled=false;localStorage.setItem(PUSH_PREF_KEY,'false');if(s.connected&&pushSubscription)s.emit('pushPreference',{endpoint:pushSubscription.endpoint,enabled:false});updateNotificationLabel(false,false);showToast('Notifications could not be enabled')}}
 
-function saveUnread(){localStorage.setItem('fivechat_unread',JSON.stringify(unread));renderUnreadSummary();}
-function totalUnreadCount(){return Object.values(unread).reduce((sum,n)=>sum+(Number(n)||0),0)}
-function renderUnreadSummary(){const el=$('totalUnread');if(!el)return;const n=totalUnreadCount();el.textContent=n>99?'99+':String(n);el.classList.toggle('hidden',n===0);el.classList.remove('unreadPulse');if(n>0){void el.offsetWidth;el.classList.add('unreadPulse')}}
+function saveUnread(){}
+function renderUnreadSummary(){}
 function saveSession(){ if(me) sessionStorage.setItem(SESSION, JSON.stringify({name:me.name,pin:window.__loginPin||''})); sessionStorage.setItem(ACTIVITY_KEY,String(Date.now())); }
 function loadSession(){ try{return JSON.parse(sessionStorage.getItem(SESSION)||'null')}catch{return null} }
 function touchActivity(){if(!me)return;sessionStorage.setItem(ACTIVITY_KEY,String(Date.now()));clearTimeout(inactivityTimer);inactivityTimer=setTimeout(expireInactiveSession,INACTIVITY_LIMIT)}
@@ -29,14 +28,14 @@ function startInactivityWatch(){touchActivity()}
 function expireInactiveSession(){if(!me)return;const last=Number(sessionStorage.getItem(ACTIVITY_KEY)||0);if(last&&Date.now()-last<INACTIVITY_LIMIT){touchActivity();return}authRequestId++;logoutInProgress=true;if(s.connected)s.emit('logout');clearTimeout(typingTimer);clearInterval(window.__hb);me=null;selected={type:null,id:null,name:null};sessionStorage.removeItem(SESSION);sessionStorage.removeItem(ACTIVITY_KEY);$('app').classList.add('hidden');$('auth').classList.remove('hidden');$('authName').value='';$('authPin').value='';$('authCode').value='';$('authError').innerHTML='<span class="sessionExpiredAlert">Session expired after 30 minutes of inactivity. Please log in again.</span>';authMode='login';updateAuth();closePeople();$('authName').focus()}
 ['pointerdown','keydown','touchstart','scroll'].forEach(evt=>window.addEventListener(evt,touchActivity,{passive:true}));
 function escapeHtml(x){return String(x).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
-function timeSince(t){if(!t)return'Offline';const sec=Math.max(0,Math.floor((Date.now()-Number(t))/1000));if(sec<60)return'just now';const m=Math.floor(sec/60);if(m<60)return`${m}m ago`;const h=Math.floor(m/60);if(h<24)return`${h}h ago`;return`${Math.floor(h/24)}d ago`}
+function timeSince(t){if(!t)return'Unknown';const sec=Math.max(0,Math.floor((Date.now()-Number(t))/1000));if(sec<10)return'just now';if(sec<60)return`${sec}s ago`;const m=Math.floor(sec/60);if(m<60)return`${m}m ago`;const h=Math.floor(m/60);if(h<24)return`${h}h ago`;const d=Math.floor(h/24);if(d<7)return`${d}d ago`;return new Date(t).toLocaleDateString([],{day:'2-digit',month:'short',year:'numeric'})}
+function lastSeenTitle(t){return t?new Date(Number(t)).toLocaleString([], {dateStyle:'medium',timeStyle:'short'}):'Last seen time unavailable'}
 function senderHue(name){let h=0;for(const c of String(name||''))h=(h*31+c.charCodeAt(0))%360;return h}
 function unreadKey(t,id){return `${t}:${String(id).toLowerCase()}`}
 function unreadFor(t,id){return unread[unreadKey(t,id)]||0}
 function bumpUnread(t,id){const k=unreadKey(t,id);unread[k]=(unread[k]||0)+1;saveUnread();renderPeople();renderGroups();showUnreadPulse(t,id);showToast('New message received')}
 function clearUnread(t,id){delete unread[unreadKey(t,id)];saveUnread();renderPeople();renderGroups()}
-function applyUnreadFromServer(data){Object.keys(unread).forEach(k=>delete unread[k]);for(const [k,n] of Object.entries(data?.direct||{}))unread[k.startsWith('direct:')?k:`direct:${k}`]=Number(n)||0;for(const [k,n] of Object.entries(data?.group||{}))unread[`group:${k}`]=Number(n)||0;saveUnread()}
-window.addEventListener('storage',e=>{if(e.key==='fivechat_unread'){try{const next=JSON.parse(e.newValue||'{}');Object.keys(unread).forEach(k=>delete unread[k]);Object.assign(unread,next);renderUnreadSummary();renderGroups()}catch{}}});
+function applyUnreadFromServer(data){Object.keys(unread).forEach(k=>delete unread[k]);for(const [k,n] of Object.entries(data?.direct||{}))unread[k.startsWith('direct:')?k:`direct:${k}`]=Number(n)||0;for(const [k,n] of Object.entries(data?.group||{}))unread[`group:${k}`]=Number(n)||0;if(me){renderPeople();renderGroups()}}
 function showUnreadPulse(t,id){const k=unreadKey(t,id);requestAnimationFrame(()=>{document.querySelectorAll(`[data-unread-key="${CSS.escape(k)}"]`).forEach(x=>{x.classList.remove('unreadPulse');void x.offsetWidth;x.classList.add('unreadPulse')})})}
 function isChatVisible(){return document.visibilityState==='visible'&&document.hasFocus()}
 
@@ -53,7 +52,7 @@ function updateAuth(){
   $('authText').textContent=create?'':'Use your account name and PIN to continue.';
   $('authBtn').innerHTML=create?'Sign up <span>→</span>':'Log in <span>→</span>';
   $('switchAuth').innerHTML=create?'Already have an account? <b>Log in</b>':'Don’t have an account? <b>Sign up</b>';
-  $('auth').classList.toggle('createMode',create);$('authPin').previousElementSibling.textContent=create?'Create 4 digits pin':'PIN';$('authPin').previousElementSibling.classList.toggle('loginPinLabel',!create);
+  $('auth').classList.toggle('createMode',create);$('authPin').placeholder=create?'Create 4 digits PIN':'Enter your PIN';$('authPin').previousElementSibling.textContent='';$('authPin').previousElementSibling.classList.remove('loginPinLabel');
 }
 function auth(){
   const name=$('authName').value.trim(), pin=$('authPin').value.trim(), code=$('authCode').value.trim(), create=authMode==='create';
@@ -87,7 +86,7 @@ function renderPeople(){
     const li=document.createElement('li'); li.className='person '+(selected.type==='direct'&&selected.name===p.name?'selected':'');
     const count=unreadFor('direct',p.name), badge=count>99?'99+':count;
     const status=p.online?'Online':`Offline · ${timeSince(p.lastSeen)}`;
-    li.innerHTML=`<span class="avatar personAvatar" style="--avatarHue:${senderHue(p.name)}">${escapeHtml(p.name[0].toUpperCase())}</span><span class="personText"><b>${escapeHtml(p.name)}</b><small class="${p.online?'onlineStatus':'offlineStatus'}">${status}</small></span>`;
+    li.innerHTML=`<span class="avatar personAvatar" style="--avatarHue:${senderHue(p.name)}">${escapeHtml(p.name[0].toUpperCase())}</span><span class="personText"><b>${escapeHtml(p.name)}</b><small class="statusLine ${p.online?'onlineStatus':'offlineStatus'}" title="${escapeHtml(p.online?'Online now':lastSeenTitle(p.lastSeen))}"><i class="statusIndicator ${p.online?'isOnline':'isOffline'}"></i>${status}</small></span>`;
     li.onclick=()=>openDirect(p); $('peopleList').append(li);
   });
   $('onlineCount').textContent=arr.filter(p=>p.online).length+' online'; renderUnreadSummary();
@@ -129,17 +128,17 @@ function openMemberActions(g,name,anchor){
   if(name.toLowerCase()===me.name.toLowerCase())return;
   const targetIsMain=name.toLowerCase()===g.createdBy.toLowerCase(), targetAdmin=isGroupAdmin(g,name), meMain=isMainGroupAdmin(g);
   const menu=document.createElement('div');menu.className='memberActionMenu';
-  if(!isGroupAdmin(g)) menu.innerHTML='<div class="memberActionHint">Member · no management actions</div>';
-  else {
-    let buttons='';
+  let buttons='<button type="button" data-add-people><span>＋</span> Add people</button>';
+  if(isGroupAdmin(g)){
     if(meMain && !targetIsMain && !targetAdmin) buttons+='<button type="button" data-make-admin><span>★</span> Make admin</button>';
     if(meMain && !targetIsMain && targetAdmin) buttons+='<button type="button" data-remove-admin><span>☆</span> Remove admin</button>';
     if(!targetIsMain && (!targetAdmin || meMain)) buttons+='<button type="button" data-remove-member class="dangerOption"><span>−</span> Remove member</button>';
-    menu.innerHTML=buttons||'<div class="memberActionHint">Main admin</div>';
   }
+  menu.innerHTML=buttons;
   document.body.append(menu);
   const r=anchor.getBoundingClientRect(),mw=205,mh=menu.offsetHeight||55;let left=Math.min(r.right-mw,innerWidth-mw-10);left=Math.max(10,left);let top=r.bottom+6;if(top+mh>innerHeight-10)top=r.top-mh-6;if(top<10)top=10;menu.style.left=left+'px';menu.style.top=top+'px';
   const doAction=(sel,fn)=>{const el=menu.querySelector(sel);if(el)el.onclick=e=>{e.preventDefault();e.stopPropagation();menu.remove();fn()}};
+  doAction('[data-add-people]',()=>{buildAddMembers(g);$('memberModal').classList.remove('hidden')});
   doAction('[data-make-admin]',()=>{const b=menu; s.emit('makeGroupAdmin',{groupId:g.id,name},result=>{if(result?.ok){groups=groups.map(x=>x.id===g.id?result.group:x);renderGroups();renderGroupInfo(result.group);showToast(`${name} is now an admin`)}else if(result?.error)showToast(result.error)})});
   doAction('[data-remove-admin]',()=>{s.emit('removeGroupAdmin',{groupId:g.id,name},result=>{if(result?.ok){groups=groups.map(x=>x.id===g.id?result.group:x);renderGroups();renderGroupInfo(result.group);showToast(`Admin status removed from ${name}`)}else if(result?.error)showToast(result.error)})});
   doAction('[data-remove-member]',()=>openRemoveMemberConfirm(g,name));
@@ -147,7 +146,7 @@ function openMemberActions(g,name,anchor){
 
 function renderGroupInfo(g){
   const admin=isGroupAdmin(g), main=isMainGroupAdmin(g), admins=new Set(groupAdmins(g).map(x=>x.toLowerCase()));
-  const memberRows=g.members.map(name=>{const p=people.find(x=>x.nameLower===name.toLowerCase())||{name,online:false,lastSeen:0};const status=p.online?'Online':`Offline · ${timeSince(p.lastSeen)}`;const badges=name.toLowerCase()===g.createdBy.toLowerCase()?'<em>Main admin</em>':admins.has(name.toLowerCase())?'<em>Admin</em>':'';return `<button type="button" class="infoMember ${admin?'memberManageable':''}" data-member-name="${escapeHtml(name)}"><span class="avatar miniAvatar" style="--avatarHue:${senderHue(name)}">${escapeHtml(name[0].toUpperCase())}</span><span class="infoMemberText"><b>${escapeHtml(name)} ${badges}</b><small class="${p.online?'onlineText':'offlineText'}">${status}</small></span>${name.toLowerCase()===me.name.toLowerCase()?'<span class="youBadge">You</span>':'<span class="memberChevron">›</span>'}</button>`}).join('');
+  const memberRows=g.members.map(name=>{const p=people.find(x=>x.nameLower===name.toLowerCase())||{name,online:false,lastSeen:0};const status=p.online?'Online':`Offline · ${timeSince(p.lastSeen)}`;const badges=name.toLowerCase()===g.createdBy.toLowerCase()?'<em>Main admin</em>':admins.has(name.toLowerCase())?'<em>Admin</em>':'';return `<button type="button" class="infoMember ${admin?'memberManageable':''}" data-member-name="${escapeHtml(name)}"><span class="avatar miniAvatar" style="--avatarHue:${senderHue(name)}">${escapeHtml(name[0].toUpperCase())}</span><span class="infoMemberText"><b>${escapeHtml(name)} ${badges}</b><small class="statusLine ${p.online?'onlineText':'offlineText'}" title="${escapeHtml(p.online?'Online now':lastSeenTitle(p.lastSeen))}"><i class="statusIndicator ${p.online?'isOnline':'isOffline'}"></i>${status}</small></span>${name.toLowerCase()===me.name.toLowerCase()?'<span class="youBadge">You</span>':''}</button>`}).join('');
   const addButton='<button class="addMemberBtn" type="button">＋ Add people</button>';
   const adminButtons=admin?`<button class="deleteGroupInfoBtn" type="button">⌫ Delete group</button>`:'';
   const leaveButton=main?'':'<button class="leaveGroupBtn" type="button">↗ Exit group</button>';
@@ -218,12 +217,14 @@ function showToast(text){let t=document.querySelector('.appToast');if(!t){t=docu
 function positionContext(x,y){const menu=$('contextMenu'),w=145,h=84;menu.style.left=Math.max(8,Math.min(x,innerWidth-w-8))+'px';menu.style.top=Math.max(8,Math.min(y,innerHeight-h-8))+'px';menu.classList.remove('hidden')}
 function showContext(e,m){if(m.from!==me.name||m.unsent)return;e?.preventDefault?.();e?.stopPropagation?.();positionContext(e.clientX,e.clientY);const menu=$('contextMenu');menu.dataset.id=m.id;menu.dataset.text=m.text||''}
 function attachMessageInteractions(el,m){
-  let touchActive=false;el.addEventListener('dblclick',e=>{e.preventDefault();if(!touchActive&&innerWidth>760)showContext(e,m);touchActive=false});
+  let touchActive=false;
+  el.addEventListener('selectstart',e=>e.preventDefault());
+  el.addEventListener('dragstart',e=>e.preventDefault());el.addEventListener('dblclick',e=>{e.preventDefault();e.stopPropagation();if(!touchActive&&innerWidth>760)showContext(e,m);touchActive=false});
   el.addEventListener('touchstart',e=>{touchActive=true;if(m.unsent)return;clearTimeout(longPressTimer);const t=e.touches[0];longPressTimer=setTimeout(()=>{showContext({clientX:t.clientX,clientY:t.clientY,preventDefault:()=>{},stopPropagation:()=>{}},m)},560)},{passive:true});
   el.addEventListener('touchend',()=>{clearTimeout(longPressTimer);setTimeout(()=>touchActive=false,80)},{passive:true});el.addEventListener('touchmove',()=>clearTimeout(longPressTimer),{passive:true});el.addEventListener('contextmenu',e=>e.preventDefault());
 }
 function hideContext(){clearTimeout(longPressTimer);$('contextMenu').classList.add('hidden')}
-$('contextMenu').onclick=e=>{const action=e.target.closest('[data-action]')?.dataset.action,id=$('contextMenu').dataset.id;if(!action||!id)return;const el=[...$('messages').children].find(x=>x.dataset.id===id);if(el?.dataset.unsent==='1'){hideContext();return}if(action==='edit'){editingId=id;$('message').value=el?.querySelector('.bubble')?.textContent||$('contextMenu').dataset.text;resizeComposer();$('message').focus()}else if(action==='unsend'){s.emit('unsendMessage',{id});}hideContext()};document.addEventListener('pointerdown',e=>{if(!e.target.closest('.floatingGroupMenu')&&!e.target.closest('.groupMore'))document.querySelectorAll('.floatingGroupMenu').forEach(x=>x.remove());if(!e.target.closest('.memberActionMenu')&&!e.target.closest('.infoMember'))document.querySelectorAll('.memberActionMenu').forEach(x=>x.remove());if(!e.target.closest('#contextMenu')&&!e.target.closest('.msg'))hideContext()},{capture:true});
+$('contextMenu').onclick=e=>{const action=e.target.closest('[data-action]')?.dataset.action,id=$('contextMenu').dataset.id;if(!action||!id)return;const el=[...$('messages').children].find(x=>x.dataset.id===id);if(el?.dataset.unsent==='1'){hideContext();return}if(action==='edit'){editingId=id;$('message').value=el?.querySelector('.bubble')?.textContent||$('contextMenu').dataset.text;resizeComposer();$('message').focus()}else if(action==='unsend'){s.emit('unsendMessage',{id});}hideContext()};const dismissPopups=e=>{if(!e.target.closest('.floatingGroupMenu')&&!e.target.closest('.groupMore'))document.querySelectorAll('.floatingGroupMenu').forEach(x=>x.remove());if(!e.target.closest('.memberActionMenu')&&!e.target.closest('.infoMember'))document.querySelectorAll('.memberActionMenu').forEach(x=>x.remove());if(!e.target.closest('#contextMenu')&&!e.target.closest('.msg'))hideContext()};document.addEventListener('pointerdown',dismissPopups,{capture:true});document.addEventListener('click',dismissPopups,{capture:true});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeMoreMenus();hideContext()}},true);
 
 function resizeComposer(){const el=$('message');if(!el)return;const min=innerWidth<=390?44:innerWidth<=760?48:54;const fieldMin=innerWidth<=390?46:innerWidth<=760?50:56;el.style.height='auto';const next=Math.min(Math.max(el.scrollHeight,min),116);el.style.height=next+'px';$('messageField').style.height=Math.max(fieldMin,Math.min(next+2,122))+'px'}
@@ -304,6 +305,7 @@ s.on('messageUnsent',d=>{
 s.on('groupEvent',m=>{if(selected.type==='group'&&selected.id===m.groupId){addMessage(m);scroll()}});
 s.on('groupRenamed',g=>{groups=groups.map(x=>x.id===g.id?g:x);if(selected.type==='group'&&selected.id===g.id){selected.name=g.name;$('chatName').textContent=g.name;renderGroupInfo(g)}renderGroups()});
 s.on('groupCreated',g=>{if(!groups.some(x=>x.id===g.id))groups.unshift(g);renderGroups()});
+s.on('groupAdded',d=>{const g=d?.group;if(!g)return;if(!groups.some(x=>x.id===g.id))groups.unshift(g);else groups=groups.map(x=>x.id===g.id?g:x);renderGroups();showToast(d?.addedBy?`${d.addedBy} added you to ${g.name}`:`Added to ${g.name}`);if(selected.type==='group'&&selected.id===g.id){selected.name=g.name;$('chatName').textContent=g.name;$('chatStatus').textContent=`${g.members.length} members`;s.emit('openGroup',{id:g.id})}});
 s.on('groupDeleted',payload=>{const id=typeof payload==='object'?payload.id:payload;groups=groups.filter(g=>g.id!==id);if(selected.type==='group'&&selected.id===id)closeChat();renderGroups();closeGroupInfo()});
 s.on('groupRemoved',id=>{groups=groups.filter(g=>g.id!==id);if(selected.type==='group'&&selected.id===id)closeChat();renderGroups()});
 s.on('groupLeft',id=>{groups=groups.filter(g=>g.id!==id);if(selected.type==='group'&&selected.id===id)closeChat();renderGroups()});
@@ -328,7 +330,7 @@ s.on('connect',()=>{if(logoutInProgress)return;const session=loadSession();if(me
 function performLogout(){if(pushSubscription&&s.connected)sendPushActivity();
   logoutInProgress=true;authRequestId++;
   if(s.connected)s.emit('logout');
-  sessionStorage.removeItem(SESSION);sessionStorage.removeItem(ACTIVITY_KEY);localStorage.removeItem('fivechat_unread');clearTimeout(inactivityTimer);me=null; selected={type:null,id:null,name:null}; clearInterval(window.__hb); clearTimeout(typingTimer); pendingFiles=[];editingId=null;typingUsers.clear();hideContext();
+  sessionStorage.removeItem(SESSION);sessionStorage.removeItem(ACTIVITY_KEY);clearTimeout(inactivityTimer);me=null; selected={type:null,id:null,name:null}; clearInterval(window.__hb); clearTimeout(typingTimer); pendingFiles=[];editingId=null;typingUsers.clear();hideContext();
   $('profileMenu').classList.add('hidden');$('memberModal').classList.add('hidden');$('groupModal').classList.add('hidden');$('renameGroupModal').classList.add('hidden');$('leaveGroupConfirm').classList.add('hidden');$('deleteGroupConfirm').classList.add('hidden');$('removeMemberConfirm').classList.add('hidden');$('app').classList.add('hidden');$('auth').classList.remove('hidden');$('authName').value='';$('authPin').value='';$('authCode').value='';$('authError').textContent='';authMode='login';updateAuth();closePeople();$('authName').focus();
 }
 function openLogoutConfirm(){ $('logoutConfirm').classList.remove('hidden');requestAnimationFrame(()=>$('logoutConfirm').classList.add('modalVisible')) }
@@ -336,7 +338,7 @@ function closeLogoutConfirm(){ $('logoutConfirm').classList.remove('modalVisible
 $('logout').onclick=openLogoutConfirm;$('profileNotifications').onclick=e=>{e.stopPropagation();updateNotificationSetting()};$('profileLogout').onclick=e=>{e.stopPropagation();$('profileMenu').classList.add('hidden');openLogoutConfirm()};$('profileBtn').onclick=e=>{e.stopPropagation();$('profileMenu').classList.toggle('hidden')};
 $('logoutCancel').onclick=closeLogoutConfirm;$('closeLogout').onclick=closeLogoutConfirm;$('logoutConfirmBtn').onclick=()=>{closeLogoutConfirm();setTimeout(performLogout,120)};
 
-const old=loadSession();if(old?.name&&old?.pin){window.__loginPin=old.pin;if(Date.now()-Number(sessionStorage.getItem(ACTIVITY_KEY)||0)<INACTIVITY_LIMIT){if(s.connected)s.emit('login',{name:old.name,pin:old.pin});else s.once('connect',()=>s.emit('login',{name:old.name,pin:old.pin}))}else{sessionStorage.removeItem(SESSION);sessionStorage.removeItem(ACTIVITY_KEY)}}
+const old=loadSession();const navType=performance.getEntriesByType?.('navigation')?.[0]?.type||'navigate';if(old?.name&&old?.pin&&navType==='reload'){window.__loginPin=old.pin;if(Date.now()-Number(sessionStorage.getItem(ACTIVITY_KEY)||0)<INACTIVITY_LIMIT){if(s.connected)s.emit('login',{name:old.name,pin:old.pin});else s.once('connect',()=>s.emit('login',{name:old.name,pin:old.pin}))}else{sessionStorage.removeItem(SESSION);sessionStorage.removeItem(ACTIVITY_KEY)}}
 
 if('serviceWorker' in navigator){navigator.serviceWorker.addEventListener('message',e=>{const d=e.data||{};if(!me)return;if(d.kind==='direct'&&d.with){const p=people.find(x=>x.name===d.with);if(p)openDirect(p)}else if(d.kind==='group'&&d.groupId){const g=getGroup(d.groupId);if(g)openGroup(g)}})}
 window.addEventListener('load',()=>{if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js',{scope:'/',updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});updateNotificationLabel(notificationEnabled,false)});
