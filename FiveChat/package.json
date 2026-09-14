@@ -3,7 +3,8 @@
   "version": "7.0.0",
   "private": true,
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "admin": "node admin.js"
   },
   "engines": {
     "node": ">=18"

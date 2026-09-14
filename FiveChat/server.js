@@ -1,6 +1,10 @@
-const express=require('express'),http=require('http'),path=require('path'),crypto=require('crypto'),{Server}=require('socket.io'),{MongoClient}=require('mongodb');
-const app=express(),server=http.createServer(app),io=new Server(server,{maxHttpBufferSize:12*1024*1024});app.use(express.json({limit:'12mb'}));app.use(express.static(path.join(__dirname,'public')));const PORT=process.env.PORT||3000,URI=process.env.MONGODB_URI,ACCESS='112211',TTL=24*60*60*1000,ROOM='main';
-let db,accounts,messages,groups;const online=new Map();const mem={accounts:new Map(),messages:[],groups:new Map()};
+const express=require('express'),http=require('http'),path=require('path'),crypto=require('crypto'),{Server}=require('socket.io'),{MongoClient}=require('mongodb'),webpush=require('web-push');
+const app=express(),server=http.createServer(app),io=new Server(server,{maxHttpBufferSize:12*1024*1024});app.use(express.json({limit:'12mb'}));app.use(express.static(path.join(__dirname,'public')));
+app.get('/api/push/public-key',(req,res)=>{if(!VAPID_PUBLIC_KEY)return res.status(503).send('');res.type('text/plain').send(VAPID_PUBLIC_KEY)});const PORT=process.env.PORT||3000,URI=process.env.MONGODB_URI,ACCESS='112211',TTL=24*60*60*1000,ROOM='main';
+let db,accounts,messages,groups,pushSubscriptions;
+const VAPID_PUBLIC_KEY=process.env.VAPID_PUBLIC_KEY||'',VAPID_PRIVATE_KEY=process.env.VAPID_PRIVATE_KEY||'',VAPID_SUBJECT=process.env.VAPID_SUBJECT||'mailto:admin@example.com';
+const pushEnabled=!!(VAPID_PUBLIC_KEY&&VAPID_PRIVATE_KEY);
+if(pushEnabled) webpush.setVapidDetails(VAPID_SUBJECT,VAPID_PUBLIC_KEY,VAPID_PRIVATE_KEY);const online=new Map();const mem={accounts:new Map(),messages:[],groups:new Map()};
 async function init(){
   if(!URI) throw new Error('MONGODB_URI is required. Configure a persistent MongoDB connection so accounts, groups, and messages survive restarts/redeploys.');
   const c=new MongoClient(URI,{serverSelectionTimeoutMS:10000});
@@ -10,6 +14,7 @@ async function init(){
   accounts=db.collection('accounts');
   messages=db.collection('messages');
   groups=db.collection('groups');
+  pushSubscriptions=db.collection('pushSubscriptions');
   await accounts.createIndex({nameLower:1},{unique:true});
   try {
     await messages.dropIndex('time_1');
@@ -19,6 +24,8 @@ async function init(){
   await messages.createIndex({expiresAt:1},{expireAfterSeconds:0});
   await messages.createIndex({kind:1,chatKey:1,time:1});
   await groups.createIndex({id:1},{unique:true});
+  await pushSubscriptions.createIndex({endpoint:1},{unique:true});
+  await pushSubscriptions.createIndex({nameLower:1});
   const cutoff=Date.now()-TTL;
   await messages.deleteMany({time:{$lt:cutoff}});
   const legacy=await messages.find({expiresAt:{$exists:false},time:{$type:'number'}},{projection:{_id:1,time:1}}).toArray();
@@ -29,6 +36,32 @@ async function init(){
   console.log('MongoDB connected — persistent accounts/groups enabled; messages expire after 24 hours');
 }
 const pinHash=p=>crypto.createHash('sha256').update(String(p)).digest('hex'),pair=(a,b)=>[a.toLowerCase(),b.toLowerCase()].sort().join('::');
+
+async function savePushSubscription(userName,subscription){
+  if(!pushSubscriptions||!userName||!subscription?.endpoint)return;
+  const now=Date.now(),nameLower=userName.toLowerCase();
+  await pushSubscriptions.updateOne({endpoint:subscription.endpoint},{$set:{name:userName,nameLower,subscription,updatedAt:now,lastActiveAt:now}}, {upsert:true});
+}
+async function removePushSubscription(userName,endpoint){
+  if(!pushSubscriptions||!userName||!endpoint)return;
+  await pushSubscriptions.deleteOne({nameLower:userName.toLowerCase(),endpoint});
+}
+async function sendPushToUser(name,payload){
+  if(!pushEnabled||!pushSubscriptions||!name)return;
+  const rows=await pushSubscriptions.find({nameLower:name.toLowerCase()}).toArray();
+  const now=Date.now();
+  for(const row of rows){
+    // Do not interrupt a device that is visibly viewing this exact conversation.
+    // Other devices/tabs still receive the push notification.
+    const active=row.activeChat, fresh=(now-(row.lastActiveAt||0))<45000;
+    const sameDirect=payload.kind==='direct'&&active?.type==='direct'&&String(active.name||'').toLowerCase()===String(payload.with||'').toLowerCase();
+    const sameGroup=payload.kind==='group'&&active?.type==='group'&&String(active.id||'')===String(payload.groupId||'');
+    if(row.visible&&fresh&&(sameDirect||sameGroup))continue;
+    try{await webpush.sendNotification(row.subscription,JSON.stringify(payload));}
+    catch(e){if(e.statusCode===404||e.statusCode===410)await pushSubscriptions.deleteOne({_id:row._id});else console.error('Push notification failed:',e.message)}
+  }
+}
+async function sendPushToUsers(names,payload){for(const n of [...new Set(names.map(x=>String(x).trim()).filter(Boolean))])await sendPushToUser(n,payload)}
 async function allPeople(){if(accounts){const a=await accounts.find({}, {projection:{_id:0,name:1,nameLower:1,createdAt:1,lastSeen:1}}).sort({name:1}).toArray();return a.map(x=>({...x,online:online.has(x.nameLower)}))}return [...mem.accounts.values()].map(x=>({...x,online:online.has(x.nameLower)})).sort((a,b)=>a.name.localeCompare(b.name))}
 async function emitPeople(){io.to(ROOM).emit('people',await allPeople())}
 async function history(kind,key){if(messages)return messages.find({kind,chatKey:key,time:{$gt:Date.now()-TTL}},{projection:{_id:0}}).sort({time:1}).toArray();return mem.messages.filter(m=>m.kind===kind&&m.chatKey===key&&m.time>Date.now()-TTL).sort((a,b)=>a.time-b.time)}
@@ -54,7 +87,7 @@ io.on('connection',s=>{
  s.on('presence',async p=>{if(!s.data.userName)return;if(p?.visible){markOnline(s);await setLastSeen(s.data.nameLower);await emitPeople()}else{await markOffline(s)}});
  s.on('heartbeat',async()=>{if(s.data.userName&&s.data.awake&&s.data.visible!==false){markOnline(s);await setLastSeen(s.data.nameLower)}});
  s.on('openDirect',async p=>{const a=s.data.userName,b=String(p?.with||'').trim();if(!a||!b)return;s.emit('directHistory',{with:b,messages:await history('direct',pair(a,b))})});
- s.on('sendDirect',async p=>{const from=s.data.userName,to=String(p?.to||'').trim().slice(0,30),text=String(p?.text||'').trim().slice(0,2000),attachments=Array.isArray(p?.attachments)?p.attachments.slice(0,6):[];if(!from||!to||(!text&&!attachments.length))return;const recipientOnline=online.has(to.toLowerCase());const m={id:Date.now()+'-'+Math.random().toString(36).slice(2),kind:'direct',chatKey:pair(from,to),from,to,text,attachments,time:Date.now(),status:recipientOnline?'delivered':'sent'};await save(m);io.to(ROOM).emit('directMessage',m);if(recipientOnline)setTimeout(()=>io.to(ROOM).emit('messageStatus',{id:m.id,status:'delivered'}),30)});
+ s.on('sendDirect',async p=>{const from=s.data.userName,to=String(p?.to||'').trim().slice(0,30),text=String(p?.text||'').trim().slice(0,2000),attachments=Array.isArray(p?.attachments)?p.attachments.slice(0,6):[];if(!from||!to||(!text&&!attachments.length))return;const recipientOnline=online.has(to.toLowerCase());const m={id:Date.now()+'-'+Math.random().toString(36).slice(2),kind:'direct',chatKey:pair(from,to),from,to,text,attachments,time:Date.now(),status:recipientOnline?'delivered':'sent'};await save(m);io.to(ROOM).emit('directMessage',m);if(recipientOnline)setTimeout(()=>io.to(ROOM).emit('messageStatus',{id:m.id,status:'delivered'}),30);await sendPushToUser(to,{title:from,body:text||'Sent an attachment',kind:'direct',with:from,chatKey:m.chatKey,messageId:m.id,url:'/'});});
  s.on('markSeen',async p=>{const viewer=s.data.userName,withName=String(p?.with||'').trim();if(!viewer||!withName)return;const ids=await markDirectSeen(withName,viewer);ids.forEach(id=>io.to(ROOM).emit('messageStatus',{id,status:'seen'}))});
  s.on('renameGroup',async p=>{const id=String(p?.id||''),name=String(p?.name||'').trim().slice(0,50),me=s.data.userName;if(!id||!name||!me)return;const g=await getGroup(id);if(!g||!g.membersLower.includes(me.toLowerCase())||g.createdBy!==me)return;const updated=await updateGroupName(id,name);const event=await saveGroupEvent(id,`${me} changed the group name to ${name}`);for(const sock of io.sockets.sockets.values())if(g.membersLower.includes(sock.data.userName?.toLowerCase())){sock.emit('groupRenamed',updated);sock.emit('groupEvent',event)}});
  s.on('createGroup',async p=>{const name=String(p?.name||'').trim().slice(0,50),list=Array.isArray(p?.members)?p.members.map(x=>String(x).trim().slice(0,30)).filter(Boolean):[],me=s.data.userName;if(!me||!name)return;const members=[...new Set([me,...list])];if(members.length<2)return s.emit('groupError','Select at least one person.');const valid=[];for(const n of members){if(await findAccount(n))valid.push(n)};if(valid.length<2)return s.emit('groupError','Select at least one registered person.');const id=Date.now()+'-'+Math.random().toString(36).slice(2),g={id,name,createdBy:me,members:valid,membersLower:valid.map(x=>x.toLowerCase()),createdAt:Date.now(),updatedAt:Date.now()};if(groups)await groups.insertOne(g);else mem.groups.set(id,g);for(const sock of io.sockets.sockets.values())if(g.membersLower.includes(sock.data.userName?.toLowerCase()))sock.emit('groupCreated',g);});
@@ -62,10 +95,10 @@ io.on('connection',s=>{
  s.on('removeGroupMember',async(p,ack)=>{const id=String(p?.groupId||''),me=s.data.userName,name=String(p?.name||'').trim();if(!id||!me||!name){ack?.({ok:false,error:'Invalid request.'});return}const g=await getGroup(id);if(!g||g.createdBy!==me){const error='Only the group admin can remove people.';s.emit('groupMemberError',error);ack?.({ok:false,error});return}if(name.toLowerCase()===g.createdBy.toLowerCase()){const error='The group admin cannot be removed.';s.emit('groupMemberError',error);ack?.({ok:false,error});return}const idx=g.membersLower.indexOf(name.toLowerCase());if(idx<0){ack?.({ok:false,error:'Member not found.'});return}g.members.splice(idx,1);g.membersLower.splice(idx,1);g.updatedAt=Date.now();if(g.members.length<1){if(groups)await groups.deleteOne({id});else mem.groups.delete(id);ack?.({ok:true,group:null,removed:name});return}if(groups)await groups.updateOne({id},{$set:{members:g.members,membersLower:g.membersLower,updatedAt:g.updatedAt}});else mem.groups.set(id,g);const event=await saveGroupEvent(id,`${me} removed ${name} from the group`);ack?.({ok:true,group:g,removed:name});for(const sock of io.sockets.sockets.values()){const u=sock.data.userName?.toLowerCase();if(g.membersLower.includes(u)){sock.emit('groupUpdated',g);sock.emit('groupEvent',event)}else if(u===name.toLowerCase())sock.emit('groupRemoved',id)}});
  s.on('leaveGroup',async p=>{const id=String(p?.groupId||''),me=s.data.userName;if(!id||!me)return;const g=await getGroup(id);if(!g||!g.membersLower.includes(me.toLowerCase()))return;if(g.createdBy===me)return s.emit('groupMemberError','The group admin cannot leave. Delete the group instead.');const idx=g.membersLower.indexOf(me.toLowerCase());g.members.splice(idx,1);g.membersLower.splice(idx,1);g.updatedAt=Date.now();if(g.members.length<1){if(groups)await groups.deleteOne({id});else mem.groups.delete(id);s.emit('groupLeft',id);return}if(groups)await groups.updateOne({id},{$set:{members:g.members,membersLower:g.membersLower,updatedAt:g.updatedAt}});else mem.groups.set(id,g);const event=await saveGroupEvent(id,`${me} left the group`);s.emit('groupLeft',id);for(const sock of io.sockets.sockets.values())if(g.membersLower.includes(sock.data.userName?.toLowerCase())){sock.emit('groupUpdated',g);sock.emit('groupEvent',event)}});
  s.on('openGroup',async p=>{const gs=await groupsFor(s.data.userName),g=gs.find(x=>x.id===String(p?.id||''));if(g)s.emit('groupHistory',{group:g,messages:await history('group',g.id)})});
- s.on('sendGroup',async p=>{const id=String(p?.groupId||''),text=String(p?.text||'').trim().slice(0,2000),me=s.data.userName,attachments=Array.isArray(p?.attachments)?p.attachments.slice(0,6):[],gs=await groupsFor(me),g=gs.find(x=>x.id===id);if(!g||(!text&&!attachments.length))return;const others=g.membersLower.filter(x=>x!==me.toLowerCase()),allDelivered=others.length>0&&others.every(x=>online.has(x));const m={id:Date.now()+'-'+Math.random().toString(36).slice(2),kind:'group',chatKey:id,groupId:id,from:me,text,attachments,time:Date.now(),status:allDelivered?'delivered':'sent'};await save(m);for(const sock of io.sockets.sockets.values())if(g.membersLower.includes(sock.data.userName?.toLowerCase()))sock.emit('groupMessage',m);if(allDelivered)setTimeout(()=>io.to(ROOM).emit('messageStatus',{id:m.id,status:'delivered'}),30);if(groups)await groups.updateOne({id},{$set:{updatedAt:m.time}})});
+ s.on('sendGroup',async p=>{const id=String(p?.groupId||''),text=String(p?.text||'').trim().slice(0,2000),me=s.data.userName,attachments=Array.isArray(p?.attachments)?p.attachments.slice(0,6):[],gs=await groupsFor(me),g=gs.find(x=>x.id===id);if(!g||(!text&&!attachments.length))return;const others=g.membersLower.filter(x=>x!==me.toLowerCase()),allDelivered=others.length>0&&others.every(x=>online.has(x));const m={id:Date.now()+'-'+Math.random().toString(36).slice(2),kind:'group',chatKey:id,groupId:id,from:me,text,attachments,time:Date.now(),status:allDelivered?'delivered':'sent'};await save(m);for(const sock of io.sockets.sockets.values())if(g.membersLower.includes(sock.data.userName?.toLowerCase()))sock.emit('groupMessage',m);if(allDelivered)setTimeout(()=>io.to(ROOM).emit('messageStatus',{id:m.id,status:'delivered'}),30);if(groups)await groups.updateOne({id},{$set:{updatedAt:m.time}});await sendPushToUsers(others,{title:g.name,body:`${me}: ${text||'Sent an attachment'}`,kind:'group',groupId:id,chatKey:id,messageId:m.id,url:'/'})});
  s.on('editMessage',async p=>{const id=String(p?.id||''),text=String(p?.text||'').trim().slice(0,2000);if(!id||!text)return;let m;if(messages)m=await messages.findOne({id});else m=mem.messages.find(x=>x.id===id);if(!m||m.from!==s.data.userName||m.time<Date.now()-TTL)return;await updateMessage(id,text);io.to(ROOM).emit('messageEdited',{id,text,edited:true})});
  s.on('unsendMessage',async p=>{const id=String(p?.id||'');let m;if(messages)m=await messages.findOne({id});else m=mem.messages.find(x=>x.id===id);if(!m||m.from!==s.data.userName||m.time<Date.now()-TTL)return;await removeMessage(id);io.to(ROOM).emit('messageUnsent',{id,from:m.from,to:m.to,kind:m.kind,groupId:m.groupId})});
  s.on('deleteGroup',async p=>{const id=String(p?.id||''),me=s.data.userName,gs=await groupsFor(me),g=gs.find(x=>x.id===id);if(!g||g.createdBy!==me)return;if(groups){await groups.deleteOne({id});await messages?.deleteMany({kind:'group',chatKey:id})}else{mem.groups.delete(id);mem.messages=mem.messages.filter(m=>!(m.kind==='group'&&m.chatKey===id))}for(const sock of io.sockets.sockets.values())if(g.membersLower.includes(sock.data.userName?.toLowerCase()))sock.emit('groupDeleted',{id});});
  s.on('typing',p=>{const to=String(p?.to||'');if(to&&s.data.userName)s.to(ROOM).emit('typing',{from:s.data.userName,to})});s.on('stopTyping',p=>{const to=String(p?.to||'');if(to&&s.data.userName)s.to(ROOM).emit('stopTyping',{from:s.data.userName,to})});s.on('groupTyping',async p=>{const id=String(p?.groupId||''),me=s.data.userName;if(!id||!me)return;const g=await getGroup(id);if(!g||!g.membersLower.includes(me.toLowerCase()))return;for(const sock of io.sockets.sockets.values())if(sock.id!==s.id&&g.membersLower.includes(sock.data.userName?.toLowerCase()))sock.emit('groupTyping',{from:me,groupId:id})});s.on('groupStopTyping',async p=>{const id=String(p?.groupId||''),me=s.data.userName;if(!id||!me)return;const g=await getGroup(id);if(!g||!g.membersLower.includes(me.toLowerCase()))return;for(const sock of io.sockets.sockets.values())if(sock.id!==s.id&&g.membersLower.includes(sock.data.userName?.toLowerCase()))sock.emit('groupStopTyping',{from:me,groupId:id})});s.on('logout',async()=>{const n=s.data.userName,key=s.data.nameLower;if(n&&key){s.data.userName=null;s.data.nameLower=null;s.data.visible=false;s.data.awake=false;await markOfflineIdentity(n,key,s.id)}});s.on('disconnect',()=>markOffline(s));
 });
-init().then(()=>server.listen(PORT,()=>console.log('FiveChat v32 on '+PORT))).catch(e=>{console.error(e);process.exit(1)});
+init().then(()=>server.listen(PORT,()=>console.log('FiveChat v37 push-ready on '+PORT))).catch(e=>{console.error(e);process.exit(1)});
