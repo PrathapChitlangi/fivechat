@@ -1,6 +1,6 @@
 const s = io();
 const $ = id => document.getElementById(id);
-let me = null, people = [], groups = [], selected = {type:null,id:null,name:null};
+let me = null, people = [], groups = [], connections = [], chatRequests = {incoming:[],outgoing:[]}, selected = {type:null,id:null,name:null};
 let authMode = 'login', typingTimer = null, typingActive = false, typingLastSent = 0, pendingFiles = [], editingId = null, logoutInProgress = false, authRequestId = 0, longPressTimer = null;
 const unread = Object.create(null);
 const SESSION = 'fivechat_v24_session';
@@ -41,6 +41,16 @@ function clearUnread(t,id){delete unread[unreadKey(t,id)];saveUnread();renderPeo
 function applyUnreadFromServer(data){Object.keys(unread).forEach(k=>delete unread[k]);for(const [k,n] of Object.entries(data?.direct||{}))unread[k.startsWith('direct:')?k:`direct:${k}`]=Number(n)||0;for(const [k,n] of Object.entries(data?.group||{}))unread[`group:${k}`]=Number(n)||0;if(me){saveUnread();renderPeople();renderGroups()}}
 function showUnreadPulse(t,id){const k=unreadKey(t,id);requestAnimationFrame(()=>{document.querySelectorAll(`[data-unread-key="${CSS.escape(k)}"]`).forEach(x=>{x.classList.remove('unreadPulse');void x.offsetWidth;x.classList.add('unreadPulse')})})}
 function isChatVisible(){return document.visibilityState==='visible'&&document.hasFocus()}
+function isConnectedTo(name){return connections.some(x=>String(x).toLowerCase()===String(name).toLowerCase())}
+function outgoingRequest(name){return chatRequests.outgoing.find(r=>String(r.to||'').toLowerCase()===String(name).toLowerCase())}
+function incomingRequest(name){return chatRequests.incoming.find(r=>r.from.toLowerCase()===String(name).toLowerCase())}
+function requestCount(){return chatRequests.incoming.length}
+function renderRequestBadge(){const el=$('requestCount');if(!el)return;const n=requestCount();el.textContent=n>99?'99+':String(n);el.classList.toggle('hidden',n===0)}
+function refreshRequestUI(){renderRequestBadge();renderPeople()}
+function openChatRequestModal(){renderRequestModal();$('chatRequestModal').classList.remove('hidden');requestAnimationFrame(()=>$('chatRequestModal').classList.add('modalVisible'))}
+function closeChatRequestModal(){$('chatRequestModal').classList.remove('modalVisible');setTimeout(()=>$('chatRequestModal').classList.add('hidden'),170)}
+function renderRequestModal(){const box=$('chatRequestList');if(!box)return;const inc=chatRequests.incoming||[],out=chatRequests.outgoing||[];let html='';if(inc.length)html+='<div class="requestSectionTitle">Incoming requests</div>'+inc.map(r=>`<div class="requestRow"><span class="avatar requestAvatar" style="--avatarHue:${senderHue(r.from)}">${escapeHtml(r.from[0].toUpperCase())}</span><div class="requestText"><b>${escapeHtml(r.from)}</b><small>Wants to connect with you</small></div><div class="requestActions"><button type="button" data-accept-request="${escapeHtml(r.id)}">Accept</button><button type="button" class="secondary" data-decline-request="${escapeHtml(r.id)}">Decline</button></div></div>`).join('');if(out.length)html+='<div class="requestSectionTitle">Sent requests</div>'+out.map(r=>`<div class="requestRow"><span class="avatar requestAvatar" style="--avatarHue:${senderHue(r.to)}">${escapeHtml(r.to[0].toUpperCase())}</span><div class="requestText"><b>${escapeHtml(r.to)}</b><small>Request pending</small></div><div class="requestActions"><button type="button" class="secondary" data-cancel-request="${escapeHtml(r.id)}">Cancel</button></div></div>`).join('');if(!html)html='<div class="requestEmpty"><div>✦</div><b>No pending requests</b><small>New connection requests will appear here.</small></div>';box.innerHTML=html}
+
 
 function showApp(){
   $('auth').classList.add('hidden'); $('app').classList.remove('hidden');
@@ -76,7 +86,7 @@ s.on('accountCreated',d=>{authMode='login';updateAuth();$('authName').value=d.na
 s.on('authError',m=>{$('authError').textContent=m;$('authCard').classList.remove('shake');void $('authCard').offsetWidth;$('authCard').classList.add('shake')});
 s.on('loggedIn',d=>{
   if(logoutInProgress)return;
-  me=d.user; people=d.people||[]; groups=d.groups||[]; applyUnreadFromServer(d.unread); saveSession(); showApp(); renderPeople(); renderGroups(); welcome(); startInactivityWatch(); updateNotificationLabel(notificationEnabled,false);
+  me=d.user; people=d.people||[]; groups=d.groups||[]; connections=(d.connections||[]).map(x=>String(x).toLowerCase()); chatRequests=d.requests||{incoming:[],outgoing:[]}; applyUnreadFromServer(d.unread); saveSession(); showApp(); renderRequestBadge(); renderPeople(); renderGroups(); welcome(); startInactivityWatch(); updateNotificationLabel(notificationEnabled,false);
   s.emit('presence',{visible:true}); startHeartbeat(); if(notificationEnabled)setupPushNotifications();
 });
 
@@ -87,13 +97,20 @@ function renderPeople(){
   $('peopleList').innerHTML='';
   arr.forEach(p=>{
     const li=document.createElement('li'); li.className='person '+(selected.type==='direct'&&selected.name===p.name?'selected':'');
-    const count=unreadFor('direct',p.name), badge=count>99?'99+':count;
+    const count=unreadFor('direct',p.name), badge=count>99?'99+':count, connected=isConnectedTo(p.name), pending=outgoingRequest(p.name), incoming=incomingRequest(p.name);
     const status=p.online?'Online':`Offline · ${timeSince(p.lastSeen)}`;
-    li.innerHTML=`<span class="avatar personAvatar" style="--avatarHue:${senderHue(p.name)}">${escapeHtml(p.name[0].toUpperCase())}</span><span class="personText"><b>${escapeHtml(p.name)}</b><small class="statusLine ${p.online?'onlineStatus':'offlineStatus'}" title="${escapeHtml(p.online?'Online now':lastSeenTitle(p.lastSeen))}"><i class="statusIndicator ${p.online?'isOnline':'isOffline'}"></i>${status}</small></span>${count?`<b class="unread" data-unread-key="${escapeHtml(unreadKey('direct',p.name))}" aria-label="${count} unread messages">${badge}</b>`:''}`;
-    li.onclick=()=>openDirect(p); $('peopleList').append(li);
+    const action=connected?`<button class="personChatAction" type="button">Chat</button>`:pending?`<button class="personChatAction pending" type="button">Pending</button>`:incoming?`<button class="personChatAction accept" type="button">Accept</button>`:`<button class="personChatAction request" type="button">＋ Connect</button>`;
+    li.innerHTML=`<span class="avatar personAvatar" style="--avatarHue:${senderHue(p.name)}">${escapeHtml(p.name[0].toUpperCase())}</span><span class="personText"><b>${escapeHtml(p.name)}</b><small class="statusLine ${p.online?'onlineStatus':'offlineStatus'}" title="${escapeHtml(p.online?'Online now':lastSeenTitle(p.lastSeen))}"><i class="statusIndicator ${p.online?'isOnline':'isOffline'}"></i>${status}</small></span>${count?`<b class="unread" data-unread-key="${escapeHtml(unreadKey('direct',p.name))}" aria-label="${count} unread messages">${badge}</b>`:''}${action}`;
+    li.onclick=()=>{if(connected)openDirect(p);else if(incoming){acceptRequest(incoming.id)}else if(!pending)sendRequest(p.name)};
+    li.querySelector('.personChatAction')?.addEventListener('click',e=>{e.stopPropagation();if(connected)openDirect(p);else if(incoming)acceptRequest(incoming.id);else if(!pending)sendRequest(p.name)});
+    $('peopleList').append(li);
   });
-  $('onlineCount').textContent=arr.filter(p=>p.online).length+' online'; renderUnreadSummary();
+  $('onlineCount').textContent=arr.filter(p=>p.online).length+' online'; renderUnreadSummary(); renderRequestBadge();
 }
+function sendRequest(name){const btn=[...document.querySelectorAll('.personChatAction')].find(x=>x.parentElement?.querySelector('.personText b')?.textContent===name);if(btn){btn.disabled=true;btn.textContent='Sending…'}s.emit('sendChatRequest',{to:name},result=>{if(result?.ok){chatRequests.outgoing.unshift(result.request);showToast(`Chat request sent to ${name}`);refreshRequestUI()}else{if(btn){btn.disabled=false;btn.textContent='＋ Connect'}showToast(result?.error||'Could not send request')}})}
+function acceptRequest(id){s.emit('acceptChatRequest',{id},result=>{if(result?.ok){chatRequests.incoming=chatRequests.incoming.filter(r=>r.id!==id);if(result.request){const other=result.request.fromLower===me.name.toLowerCase()?result.request.to:result.request.from;connections=[...new Set([...connections,String(other).toLowerCase()])]}renderRequestModal();refreshRequestUI();showToast('Connection accepted')}else showToast(result?.error||'Could not accept request')})}
+function declineRequest(id){s.emit('declineChatRequest',{id},result=>{if(result?.ok){chatRequests.incoming=chatRequests.incoming.filter(r=>r.id!==id);renderRequestModal();refreshRequestUI();showToast('Request declined')}else showToast(result?.error||'Could not decline request')})}
+function cancelRequest(id){s.emit('cancelChatRequest',{id},result=>{if(result?.ok){chatRequests.outgoing=chatRequests.outgoing.filter(r=>r.id!==id);renderRequestModal();refreshRequestUI();showToast('Request cancelled')}else showToast(result?.error||'Could not cancel request')})}
 function groupAdmins(g){return Array.isArray(g?.admins)&&g.admins.length?g.admins:[g?.createdBy].filter(Boolean)}
 function isGroupAdmin(g,name=me?.name){return groupAdmins(g).some(x=>String(x).toLowerCase()===String(name).toLowerCase())}
 function isMainGroupAdmin(g,name=me?.name){return !!g&&g.createdBy?.toLowerCase()===String(name).toLowerCase()}
@@ -182,13 +199,14 @@ function showDirectInfo(p,anchor){
   closeDirectInfo(); closeMoreMenus();
   const menu=document.createElement('div'); menu.className='directInfoMenu';
   const status=p.online?'Online':`Offline · ${timeSince(p.lastSeen)}`;
-  menu.innerHTML=`<div class="directInfoHead"><span class="avatar directInfoAvatar" style="--avatarHue:${senderHue(p.name)}">${escapeHtml(p.name[0].toUpperCase())}</span><div><b>${escapeHtml(p.name)}</b><small class="${p.online?'isOnlineText':'isOfflineText'}">${status}</small></div><button type="button" class="directInfoClose" aria-label="Close">×</button></div><div class="directInfoMeta">${p.online?'Available now':`Last seen ${lastSeenTitle(p.lastSeen)}`}</div><button type="button" class="clearDirectBtn">⌫ Clear chat history</button>`;
+  menu.innerHTML=`<div class="directInfoHead"><span class="avatar directInfoAvatar" style="--avatarHue:${senderHue(p.name)}">${escapeHtml(p.name[0].toUpperCase())}</span><div><b>${escapeHtml(p.name)}</b><small class="${p.online?'isOnlineText':'isOfflineText'}">${status}</small></div><button type="button" class="directInfoClose" aria-label="Close">×</button></div><div class="directInfoMeta">${p.online?'Available now':`Last seen ${lastSeenTitle(p.lastSeen)}`}</div><button type="button" class="clearDirectBtn">⌫ Clear chat history</button><button type="button" class="blockDirectBtn">🚫 Block user</button>`;
   document.body.append(menu);
   const r=anchor.getBoundingClientRect(),mw=Math.min(290,innerWidth-20),mh=menu.offsetHeight||170; let left=Math.min(r.left,innerWidth-mw-10);left=Math.max(10,left);let top=r.bottom+10;if(top+mh>innerHeight-10)top=r.top-mh-10;if(top<10)top=10;menu.style.left=left+'px';menu.style.top=top+'px';
   menu.querySelector('.directInfoClose').onclick=e=>{e.stopPropagation();closeDirectInfo()};
-  menu.querySelector('.clearDirectBtn').onclick=e=>{e.stopPropagation();closeDirectInfo();openClearChatConfirm(p.name)};
+  menu.querySelector('.clearDirectBtn').onclick=e=>{e.stopPropagation();closeDirectInfo();openClearChatConfirm(p.name)};menu.querySelector('.blockDirectBtn').onclick=e=>{e.stopPropagation();closeDirectInfo();if(confirm(`Block ${p.name}? They will no longer be able to connect with you.`)){s.emit('blockUser',{name:p.name},result=>{if(result?.ok){connections=connections.filter(x=>x!==p.name.toLowerCase());showToast(`${p.name} blocked`);closeChat();refreshRequestUI()}else showToast(result?.error||'Could not block user')})}};
 }
 function openDirect(p){
+  if(!isConnectedTo(p.name)){showToast('Accept a chat request before opening this chat');return}
   hideContext();stopAllTyping(); selected={type:'direct',name:p.name}; closeGroupInfo(); clearUnread('direct',p.name); sendPushActivity(); $('chatHead').classList.remove('homeHidden');
   $('chatName').textContent=p.name;$('chatAvatar').textContent=p.name[0].toUpperCase();$('chatAvatar').disabled=false;$('chatAvatar').dataset.userName=p.name;setDirectStatus(p);
   enableComposer(); $('messages').innerHTML='<div class="loading">Loading…</div>'; closePeople(); s.emit('openDirect',{with:p.name}); if(s.connected)s.emit('markSeen',{with:p.name});
@@ -241,7 +259,7 @@ $('contextMenu').onclick=e=>{const action=e.target.closest('[data-action]')?.dat
 const dismissPopups=e=>{
   const t=e.target;
   if(!t.closest('.memberActionMenu')&&!t.closest('.infoMember'))document.querySelectorAll('.memberActionMenu').forEach(x=>x.remove());
-  if(!t.closest('#contextMenu')&&!t.closest('.msg'))hideContext();
+  if(!t.closest('#contextMenu')&&!t.closest('.msg'))hideContext();if(!t.closest('.profileMenu')&&!t.closest('#profileBtn'))$('profileMenu')?.classList.add('hidden');if(!t.closest('.floatingGroupMenu')&&!t.closest('.groupMore'))closeMoreMenus();if(!t.closest('.directInfoMenu')&&!t.closest('#chatAvatar'))closeDirectInfo();if(!t.closest('.memberActionMenu')&&!t.closest('.infoMember'))document.querySelectorAll('.memberActionMenu').forEach(x=>x.remove());
   if(!t.closest('#profileMenu')&&!t.closest('#profileBtn'))$('profileMenu')?.classList.add('hidden');
   if(!t.closest('#groupInfoPanel')&&!t.closest('#chatAvatar'))closeGroupInfo();
   if(!t.closest('.directInfoMenu')&&!t.closest('#chatAvatar'))closeDirectInfo();
@@ -340,6 +358,10 @@ s.on('groupDeleted',payload=>{const id=typeof payload==='object'?payload.id:payl
 s.on('groupRemoved',id=>{groups=groups.filter(g=>g.id!==id);if(selected.type==='group'&&selected.id===id)closeChat();renderGroups()});
 s.on('groupLeft',id=>{groups=groups.filter(g=>g.id!==id);if(selected.type==='group'&&selected.id===id)closeChat();renderGroups()});
 s.on('unreadCounts',d=>applyUnreadFromServer(d));
+s.on('chatRequests',d=>{chatRequests=d||{incoming:[],outgoing:[]};refreshRequestUI();if($('chatRequestModal')&&!$('chatRequestModal').classList.contains('hidden'))renderRequestModal()});
+s.on('connectionUpdated',d=>{if(d?.name){connections=[...new Set([...connections,String(d.name).toLowerCase()])];refreshRequestUI();showToast('Chat connection ready')}});
+s.on('directAccessError',d=>showToast(d?.error||'This chat is not available yet'));
+
 s.on('chatHistoryCleared',d=>{if(!me)return;const key=String(d?.chatKey||'');if(selected.type==='direct'&&selected.name&&key===[me.name.toLowerCase(),selected.name.toLowerCase()].sort().join('::')){$('messages').innerHTML='<div class="empty"><h3>No messages yet</h3><p>Start the conversation.</p></div>'}if(d?.with)clearUnread('direct',d.with)});
 s.on('groupUpdated',g=>{groups=groups.map(x=>x.id===g.id?g:x);if(selected.type==='group'&&selected.id===g.id){$('chatName').textContent=g.name;$('chatStatus').textContent=`${g.members.length} members`;if(!$('groupInfoPanel').classList.contains('hidden'))renderGroupInfo(g)}renderGroups()});
 s.on('people',a=>{people=a;renderPeople();if(selected.type==='direct'){const p=a.find(x=>x.name===selected.name);if(p)setDirectStatus(p)}if(selected.type==='group'&&!$('groupInfoPanel').classList.contains('hidden')){const g=getGroup(selected.id);if(g)renderGroupInfo(g)}});
@@ -366,11 +388,12 @@ function performLogout(){if(pushSubscription&&s.connected)sendPushActivity();
 }
 function openLogoutConfirm(){ $('logoutConfirm').classList.remove('hidden');requestAnimationFrame(()=>$('logoutConfirm').classList.add('modalVisible')) }
 function closeLogoutConfirm(){ $('logoutConfirm').classList.remove('modalVisible');setTimeout(()=>$('logoutConfirm').classList.add('hidden'),170) }
+$('openRequests').onclick=e=>{e.stopPropagation();closeMoreMenus();closeDirectInfo();openChatRequestModal()};$('closeChatRequests').onclick=closeChatRequestModal;$('chatRequestCancel').onclick=closeChatRequestModal;$('chatRequestList').onclick=e=>{const a=e.target.closest('[data-accept-request]'),d=e.target.closest('[data-decline-request]'),c=e.target.closest('[data-cancel-request]');if(a)acceptRequest(a.dataset.acceptRequest);else if(d)declineRequest(d.dataset.declineRequest);else if(c)cancelRequest(c.dataset.cancelRequest)};
 $('logout').onclick=openLogoutConfirm;$('profileNotifications').onclick=e=>{e.stopPropagation();updateNotificationSetting()};$('profileLogout').onclick=e=>{e.stopPropagation();$('profileMenu').classList.add('hidden');openLogoutConfirm()};$('profileBtn').onclick=e=>{e.stopPropagation();$('profileMenu').classList.toggle('hidden')};
 $('clearChatCancel').onclick=closeClearChatConfirm;$('closeClearChat').onclick=closeClearChatConfirm;$('clearChatConfirmBtn').onclick=()=>{const name=pendingClearChatKey;if(!name)return;const btn=$('clearChatConfirmBtn');btn.disabled=true;btn.textContent='Clearing…';s.emit('clearDirectHistory',{with:name},result=>{btn.disabled=false;btn.textContent='Clear history';if(result?.ok){if(selected.type==='direct'&&selected.name===name){$('messages').innerHTML='<div class="empty"><h3>No messages yet</h3><p>Start the conversation.</p></div>'}closeClearChatConfirm();showToast('Chat history cleared')}else showToast(result?.error||'Could not clear chat history')})};
 $('logoutCancel').onclick=closeLogoutConfirm;$('closeLogout').onclick=closeLogoutConfirm;$('logoutConfirmBtn').onclick=()=>{closeLogoutConfirm();setTimeout(performLogout,120)};
 
 const old=loadSession();const navType=performance.getEntriesByType?.('navigation')?.[0]?.type||'navigate';if(old?.name&&old?.pin&&navType==='reload'){window.__loginPin=old.pin;if(Date.now()-Number(sessionStorage.getItem(ACTIVITY_KEY)||0)<INACTIVITY_LIMIT){if(s.connected)s.emit('login',{name:old.name,pin:old.pin});else s.once('connect',()=>s.emit('login',{name:old.name,pin:old.pin}))}else{sessionStorage.removeItem(SESSION);sessionStorage.removeItem(ACTIVITY_KEY)}}
 
-if('serviceWorker' in navigator){navigator.serviceWorker.addEventListener('message',e=>{const d=e.data||{};if(!me)return;if(d.kind==='direct'&&d.with){const p=people.find(x=>x.name===d.with);if(p)openDirect(p)}else if(d.kind==='group'&&d.groupId){const g=getGroup(d.groupId);if(g)openGroup(g)}})}
+if('serviceWorker' in navigator){navigator.serviceWorker.addEventListener('message',e=>{const d=e.data||{};if(!me)return;if(d.kind==='direct'&&d.with){const p=people.find(x=>x.name===d.with);if(p)openDirect(p)}else if(d.kind==='group'&&d.groupId){const g=getGroup(d.groupId);if(g)openGroup(g)}else if(d.kind==='chatRequest'){openChatRequestModal()}else if(d.kind==='chatRequestAccepted'&&d.with){const p=people.find(x=>x.name===d.with);if(p&&isConnectedTo(p.name))openDirect(p)}})}
 window.addEventListener('load',()=>{if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js',{scope:'/',updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});updateNotificationLabel(notificationEnabled,false)});
